@@ -5,29 +5,82 @@ from datetime import datetime, date, timedelta # Importamos date
 from app.database import get_db
 from app.models import solicitud as models_solicitud
 from app.models import servicio as models_servicio
-from app.models.solicitud import EstadoSolicitud # Importar el Enum correcto
+from app.models.solicitud import EstadoSolicitud, Solicitud # Importar el Enum correcto
 from app.models.servicio import EstadoServicio # Importar el Enum correcto
 from app.schemas import solicitud as schemas_solicitud
 from app.schemas.servicio import ServicioCreate, ServicioOut
 
 router = APIRouter(prefix="/solicitudes", tags=["Solicitudes"])
 
-# Crear nueva solicitud
 @router.post("/", response_model=schemas_solicitud.SolicitudOut, status_code=status.HTTP_201_CREATED, summary="Crear una nueva solicitud")
 def create_solicitud(solicitud_in: schemas_solicitud.SolicitudCreate, db: Session = Depends(get_db)):
-    # La validación de formato de email debe estar en schemas_solicitud.SolicitudCreate
-    
+    """
+    Crea una nueva solicitud de ingeniería y sus servicios asociados.
+    Requiere al menos un servicio y valida que la fecha de reunión sea futura.
+    La operación es atómica: si falla la creación de la solicitud o de alguno de sus servicios,
+    toda la transacción se revierte.
+    """
+    # Pydantic ya validará si `servicios_solicitados` está vacío debido a `min_items=1`
+    # en el esquema SolicitudCreate. Si no se envía al menos un servicio, FastAPI
+    # devolverá automáticamente un 422 Unprocessable Entity.
+
     db_solicitud = models_solicitud.Solicitud(
         cliente=solicitud_in.cliente,
         email_cliente=solicitud_in.email_cliente,
         observaciones=solicitud_in.observaciones,
-        # fecha_solicitud y fecha_ultima_modificacion se establecen automáticamente por el modelo
-        # estado se establece automáticamente a ABIERTA por el modelo
+        # fecha_solicitud y fecha_ultima_modificacion se establecen automáticamente por el modelo ORM
+        # estado se establece automáticamente a ABIERTA por el modelo ORM
     )
-    db.add(db_solicitud)
-    db.commit()
-    db.refresh(db_solicitud)
-    return db_solicitud
+
+    try:
+        db.add(db_solicitud)
+        # db.flush() es crucial aquí para que db_solicitud.id esté disponible
+        # antes de intentar añadir los servicios, pero sin hacer commit aún.
+        db.flush()
+
+        # Iterar sobre los servicios proporcionados y crearlos
+        # ¡IMPORTANTE! Aquí se usa `solicitud_in.servicios_solicitados`
+        # si tu esquema SolicitudCreate tiene ese nombre de campo.
+        # En el código que pegaste, usaste `solicitud_in.servicios`, lo cual
+        # podría ser el origen de otra confusión si el esquema no coincide.
+        # Asegúrate de que el nombre del campo en SolicitudCreate sea `servicios_solicitados`.
+        for servicio_data in solicitud_in.servicios: # <-- Asegúrate de usar el nombre correcto del campo
+            # Las validaciones de ServicioCreate (como fecha_reunion futura)
+            # ya fueron manejadas por Pydantic antes de llegar a esta función.
+            db_servicio = models_servicio.Servicio(
+                id_solicitud=db_solicitud.id, # Asocia el servicio con la solicitud recién creada
+                nombre_servicio=servicio_data.nombre_servicio,
+                # Convertir date a datetime si tu columna es DateTime en el modelo Servicio
+                fecha_reunion=datetime.combine(servicio_data.fecha_reunion, datetime.min.time()),
+                comentarios=servicio_data.comentarios,
+                costo_estimado=servicio_data.costo_estimado,
+                estado_servicio=EstadoServicio.PENDIENTE # Estado inicial para un nuevo servicio
+            )
+            db.add(db_servicio)
+
+        db.commit() # Si todo va bien, se hace commit de la solicitud y todos sus servicios.
+        db.refresh(db_solicitud) # Refresca la solicitud para cargar los datos generados por la DB (ej. IDs)
+
+        # Cargar explícitamente los servicios para que estén disponibles en la respuesta
+        # Esto es necesario si no tienes una relación cargada automáticamente o si necesitas
+        # asegurar que los servicios estén en el objeto devuelto.
+        # `joinedload` es la forma eficiente de cargar relaciones en SQLAlchemy.
+        # Usa el nombre de la relación definida en tu modelo Solicitud, que es 'servicios'.
+        db_solicitud_with_services = db.query(models_solicitud.Solicitud).options(
+            joinedload(models_solicitud.Solicitud.servicios) # Usar 'servicios' aquí
+        ).filter(models_solicitud.Solicitud.id == db_solicitud.id).first()
+
+        # Asegúrate de que el objeto retornado tenga los servicios cargados correctamente
+        # Si SolicitudOut espera 'servicios' y el modelo tiene 'servicios', esto debería funcionar.
+        return db_solicitud_with_services
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error durante la creación de solicitud y servicios: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear la solicitud o sus servicios. Detalle: {e}"
+        )
 
 # Obtener una solicitud por ID
 @router.get("/{id}", response_model=schemas_solicitud.SolicitudOut, summary="Obtener una solicitud por ID")
@@ -39,43 +92,44 @@ def get_solicitud(id: int, db: Session = Depends(get_db)):
     return solicitud
 
 # Listar solicitudes con filtros y paginación
-@router.get("/", response_model=List[schemas_solicitud.SolicitudOut], summary="Listar solicitudes con filtros, paginación y ordenamiento")
+@router.get("/", summary="Listar solicitudes con filtros y paginación")
 def list_solicitudes(
-    estado: Optional[EstadoSolicitud] = Query(None, description="Filtrar por estado de la solicitud"), # Usar el Enum aquí
-    fecha_desde: Optional[date] = Query(None, description="Filtrar por fecha de solicitud (desde)"), # Cambiado a date
-    fecha_hasta: Optional[date] = Query(None, description="Filtrar por fecha de solicitud (hasta)"), # Cambiado a date
-    cliente: Optional[str] = Query(None, description="Filtrar por nombre del cliente (búsqueda parcial)"),
-    skip: int = Query(0, ge=0, description="Número de registros a omitir para paginación"),
-    limit: int = Query(10, ge=1, le=100, description="Número máximo de registros a retornar"),
-    ordenar_por: Optional[str] = Query("fecha_solicitud", description="Campo para ordenar (ej: id, cliente, fecha_solicitud, estado)"),
-    orden: Optional[str] = Query("asc", description="Orden de los resultados (asc o desc)"),
+    estado: Optional[EstadoSolicitud] = Query(None),
+    cliente: Optional[str] = Query(None),
+    fecha_desde: Optional[date] = Query(None),
+    fecha_hasta: Optional[date] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+    ordenar_por: str = Query("fecha_solicitud"),
+    orden: str = Query("asc"),
     db: Session = Depends(get_db)
 ):
-    query = db.query(models_solicitud.Solicitud)
-
+    skip = (page - 1) * size
+    query = db.query(Solicitud)
+    
     if estado:
-        query = query.filter(models_solicitud.Solicitud.estado == estado)
+        query = query.filter(Solicitud.estado == estado)
     if cliente:
-        query = query.filter(models_solicitud.Solicitud.cliente.ilike(f"%{cliente}%")) # Corregido: .cliente
+        query = query.filter(Solicitud.cliente.ilike(f"%{cliente}%"))
     if fecha_desde:
-        query = query.filter(models_solicitud.Solicitud.fecha_solicitud >= fecha_desde) # Corregido: .fecha_solicitud
+        query = query.filter(Solicitud.fecha_solicitud >= fecha_desde)
     if fecha_hasta:
-        # Para incluir todo el día de fecha_hasta, sumamos un día y usamos <
-        query = query.filter(models_solicitud.Solicitud.fecha_solicitud < (fecha_hasta + timedelta(days=1)))
+        query = query.filter(Solicitud.fecha_solicitud < (fecha_hasta + timedelta(days=1)))
     
     # Ordenamiento
-    if ordenar_por:
-        if hasattr(models_solicitud.Solicitud, ordenar_por):
-            if orden == "desc":
-                query = query.order_by(getattr(models_solicitud.Solicitud, ordenar_por).desc())
-            else:
-                query = query.order_by(getattr(models_solicitud.Solicitud, ordenar_por).asc())
-        else:
-            raise HTTPException(status_code=400, detail=f"Campo '{ordenar_por}' no válido para ordenamiento.")
-
-
-    solicitudes = query.offset(skip).limit(limit).all()
-    return solicitudes
+    if hasattr(Solicitud, ordenar_por):
+        order_func = getattr(Solicitud, ordenar_por).desc() if orden == "desc" else getattr(Solicitud, ordenar_por).asc()
+        query = query.order_by(order_func)
+    
+    total = query.count()
+    solicitudes = query.offset(skip).limit(size).all()
+    
+    return {
+        "content": solicitudes,
+        "totalElements": total,
+        "totalPages": (total + size - 1) // size,
+        "currentPage": page
+    }
 
 # Actualizar solicitud
 @router.put("/{id}", response_model=schemas_solicitud.SolicitudOut, summary="Actualizar una solicitud por ID")

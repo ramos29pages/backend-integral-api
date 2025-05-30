@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 from datetime import datetime
 from app.models.solicitud import EstadoSolicitud # Importa el Enum real del modelo
-from app.schemas.servicio import ServicioOut # Importa el esquema de salida de servicio
+from app.schemas.servicio import ServicioCreate, ServicioOut # Importa el esquema de salida de servicio
 
 class SolicitudBase(BaseModel):
     cliente: str = Field(..., min_length=1, max_length=100, description="Nombre de la empresa o persona solicitante.")
@@ -10,11 +10,14 @@ class SolicitudBase(BaseModel):
     observaciones: Optional[str] = Field(None, max_length=500, description="Campo de texto libre para observaciones adicionales.")
 
     class Config:
-        from_attributes = True
+        from_attributes = True # Permite mapear desde atributos de ORM
 
 class SolicitudCreate(SolicitudBase):
-    """Esquema para la creación de una nueva solicitud."""
-    pass
+    """
+    Esquema para la creación de una nueva solicitud.
+    AHORA INCLUYE UNA LISTA DE SERVICIOS OBLIGATORIA.
+    """
+    servicios: List[ServicioCreate] = Field(..., min_items=1, description="Debe incluir al menos un servicio solicitado.")
 
 class SolicitudUpdate(BaseModel):
     """Esquema para la actualización de una solicitud existente, con todos los campos opcionales."""
@@ -26,6 +29,7 @@ class SolicitudUpdate(BaseModel):
     class Config:
         from_attributes = True
 
+
 class SolicitudOut(SolicitudBase):
     """Esquema para la salida de una solicitud, incluyendo su ID y la lista de servicios asociados."""
     id: int = Field(..., description="Identificador único de la solicitud.")
@@ -35,4 +39,5 @@ class SolicitudOut(SolicitudBase):
     servicios: List[ServicioOut] = Field(default_factory=list, description="Lista de servicios asociados a esta solicitud.") # Usa default_factory para list
 
     class Config:
-        from_attributes = True
+        orm_mode = True # Habilita la compatibilidad con ORM (SQLAlchemy)
+        use_enum_values = True # Permite que los Enums se serialicen a sus valores directos
