@@ -184,17 +184,15 @@ def add_servicio_to_solicitud(id: int, servicio_in: ServicioCreate, db: Session 
     if not solicitud:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
     
-    # Regla de negocio: La fecha de reunión debe ser futura
-    # Usar .date() para comparar solo la fecha
-    if servicio_in.fecha_reunion < datetime.utcnow().date():
-        raise HTTPException(status_code=400, detail="La fecha de reunión debe ser futura.")
+    # La validación de fecha futura ahora se maneja en el validador de Pydantic de ServicioCreate
+    # if servicio_in.fecha_reunion.date() < datetime.utcnow().date():
+    #     raise HTTPException(status_code=400, detail="La fecha de reunión debe ser futura.")
     
-    # Se puede agregar una validación aquí para que no se agreguen servicios a solicitudes Cerradas/Canceladas
     if solicitud.estado in [EstadoSolicitud.CERRADA, EstadoSolicitud.CANCELADA]:
         raise HTTPException(status_code=400, detail=f"No se pueden agregar servicios a solicitudes en estado '{solicitud.estado.value}'.")
 
     db_servicio = models_servicio.Servicio(
-        **servicio_in.model_dump(), # Usar .model_dump()
+        **servicio_in.model_dump(),
         id_solicitud=id
     )
     db.add(db_servicio)
