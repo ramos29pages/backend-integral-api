@@ -186,7 +186,7 @@ def add_servicio_to_solicitud(id: int, servicio_in: ServicioCreate, db: Session 
     
     # Regla de negocio: La fecha de reunión debe ser futura
     # Usar .date() para comparar solo la fecha
-    if servicio_in.fecha_reunion.date() < datetime.utcnow().date():
+    if servicio_in.fecha_reunion < datetime.utcnow().date():
         raise HTTPException(status_code=400, detail="La fecha de reunión debe ser futura.")
     
     # Se puede agregar una validación aquí para que no se agreguen servicios a solicitudes Cerradas/Canceladas
@@ -195,7 +195,7 @@ def add_servicio_to_solicitud(id: int, servicio_in: ServicioCreate, db: Session 
 
     db_servicio = models_servicio.Servicio(
         **servicio_in.model_dump(), # Usar .model_dump()
-        solicitud_id=id
+        id_solicitud=id
     )
     db.add(db_servicio)
     db.commit()

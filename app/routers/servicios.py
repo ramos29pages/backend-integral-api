@@ -20,14 +20,14 @@ router = APIRouter(prefix="/servicios", tags=["Servicios"]) # Prefijo y tag para
 # Actualizar un servicio
 @router.put("/{id}", response_model=ServicioOut, summary="Actualizar un servicio por ID")
 def update_servicio(id: int, servicio_update: ServicioUpdate, db: Session = Depends(get_db)):
-    servicio = db.query(models_servicio.Servicio).filter(models_servicio.Servicio.id == id).first()
+    servicio = db.query(models_servicio.Servicio).filter(models_servicio.Servicio.id_servicio == id).first()
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
 
     # Validación de regla de negocio: La fecha de reunión debe ser futura
     if servicio_update.fecha_reunion is not None: # Usar fecha_reunion, no fecha_ejecucion
         # Comparar solo la fecha, usando datetime.utcnow().date()
-        if servicio_update.fecha_reunion.date() < datetime.utcnow().date():
+        if servicio_update.fecha_reunion < datetime.utcnow().date():
             raise HTTPException(status_code=400, detail="La fecha de reunión debe ser futura.")
 
     # Validación de regla de negocio: costo_estimado solo si el servicio está APROBADO

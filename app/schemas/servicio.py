@@ -5,7 +5,7 @@ from app.models.servicio import EstadoServicio # Importa el Enum real del modelo
 
 class ServicioBase(BaseModel):
     nombre_servicio: str = Field(..., min_length=1, max_length=255, description="Descripción del servicio solicitado.")
-    fecha_reunion: datetime = Field(..., description="Fecha y hora programada para la reunión de evaluación.")
+    fecha_reunion: date = Field(..., description="Fecha y hora programada para la reunión de evaluación.")
     comentarios: Optional[str] = Field(None, max_length=500, description="Observaciones adicionales sobre la reunión.")
     costo_estimado: Optional[float] = Field(None, ge=0, description="Costo estimado del servicio (solo si está aprobado).")
 
@@ -44,15 +44,15 @@ class ServicioCreate(BaseModel):
 class ServicioUpdate(BaseModel):
     """Esquema para la actualización de un servicio existente, con todos los campos opcionales."""
     nombre_servicio: Optional[str] = Field(None, min_length=1, max_length=255, description="Descripción del servicio solicitado.")
-    fecha_reunion: Optional[datetime] = Field(None, description="Nueva fecha y hora programada para la reunión de evaluación.")
+    fecha_reunion: Optional[date] = Field(None, description="Nueva fecha y hora programada para la reunión de evaluación.")
     estado_servicio: Optional[EstadoServicio] = Field(None, description="Estado actual del servicio.") # Usar el Enum
     comentarios: Optional[str] = Field(None, max_length=500, description="Nuevas observaciones de la reunión.")
     costo_estimado: Optional[float] = Field(None, ge=0, description="Nuevo costo estimado del servicio.")
 
-    @validator("fecha_reunion", pre=True, always=True)
-    def fecha_reunion_debe_ser_futura_update(cls, v):
+    @validator("fecha_reunion")
+    def fecha_reunion_debe_ser_futura(cls, v):
         """Valida que la fecha de reunión (si se proporciona) sea futura."""
-        if v is not None and v.date() < datetime.utcnow().date():
+        if v is not None and v < date.today():  # ✅ Comparar con 'date.today()'
             raise ValueError("La fecha de reunión debe ser futura.")
         return v
     
