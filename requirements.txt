@@ -6,4 +6,4 @@ python-dotenv
 pydantic
 alembic
 pydantic[email]
-dateutil
+python-dateutil
