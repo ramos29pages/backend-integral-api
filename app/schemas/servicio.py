@@ -3,7 +3,7 @@ from typing import Optional, List
 from datetime import datetime, date # Importa 'date' para comparaciones de fecha
 from app.models.servicio import EstadoServicio # Importa el Enum real del modelo
 from datetime import datetime, date
-from pydantic import validator
+from pydantic import field_validator
 from dateutil.parser import parse  # necesitas instalar python-dateutil si no está
 
 class ServicioBase(BaseModel):
@@ -33,9 +33,9 @@ class ServicioCreate(BaseModel):
     nombre_servicio: str = Field(..., min_length=1, max_length=255, description="Descripción del servicio (requerido).")
     fecha_reunion: datetime = Field(..., description="Fecha y hora programada para evaluación (debe ser futura).") # Cambiado a datetime
     comentarios: Optional[str] = Field(None, max_length=500, description="Observaciones de la reunión (opcional).")
-    costo_estimado: Optional[float] = Field(None, ge=0, description="Valor monetario (opcional, solo si está aprobado).")
+    # costo_estimado: Optional[float] = Field(None, ge=0, description="Valor monetario (opcional, solo si está aprobado).")
 
-    @validator('fecha_reunion')
+    @field_validator('fecha_reunion')
     def validate_fecha_reunion_futura(cls, v):
         """
         Validador para asegurar que la fecha de reunión sea futura.
@@ -97,22 +97,22 @@ class ServicioUpdate(BaseModel):
         
         return v
 
-    """
-    Esquema Pydantic para la salida de un servicio.
-    """
-    id_servicio: int = Field(..., description="Identificador único del servicio.")
-    id_solicitud: int = Field(..., description="ID de la solicitud a la que pertenece este servicio.")
-    nombre_servicio: str
-    fecha_reunion: date # Se espera que la fecha se serialice a formato de fecha
-    estado_servicio: EstadoServicio
-    comentarios: Optional[str]
-    costo_estimado: Optional[float]
+    # """
+    # Esquema Pydantic para la salida de un servicio.
+    # """
+    # id_servicio: int = Field(..., description="Identificador único del servicio.")
+    # id_solicitud: int = Field(..., description="ID de la solicitud a la que pertenece este servicio.")
+    # nombre_servicio: str
+    # fecha_reunion: date # Se espera que la fecha se serialice a formato de fecha
+    # estado_servicio: EstadoServicio
+    # comentarios: Optional[str]
+    # costo_estimado: Optional[float]
 
-    class Config:
-        orm_mode = True # Habilita la compatibilidad con ORM (SQLAlchemy)
-        use_enum_values = True # Permite que los Enums se serialicen a sus valores directos
-        # Configuración para manejar la conversión de datetime a date si es necesario
-        json_encoders = {
-            datetime: lambda v: v.date().isoformat() if isinstance(v, datetime) else v.isoformat(),
-            date: lambda v: v.isoformat()
-        }
+    # class Config:
+    #     orm_mode = True # Habilita la compatibilidad con ORM (SQLAlchemy)
+    #     use_enum_values = True # Permite que los Enums se serialicen a sus valores directos
+    #     # Configuración para manejar la conversión de datetime a date si es necesario
+    #     json_encoders = {
+    #         datetime: lambda v: v.date().isoformat() if isinstance(v, datetime) else v.isoformat(),
+    #         date: lambda v: v.isoformat()
+    #     }
