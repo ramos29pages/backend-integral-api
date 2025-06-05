@@ -53,7 +53,6 @@ def create_solicitud(solicitud_in: schemas_solicitud.SolicitudCreate, db: Sessio
                 # Convertir date a datetime si tu columna es DateTime en el modelo Servicio
                 fecha_reunion=datetime.combine(servicio_data.fecha_reunion, datetime.min.time()),
                 comentarios=servicio_data.comentarios,
-                costo_estimado=servicio_data.costo_estimado,
                 estado_servicio=EstadoServicio.PENDIENTE # Estado inicial para un nuevo servicio
             )
             db.add(db_servicio)
