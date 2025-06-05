@@ -17,4 +17,4 @@ app.add_middleware(
 
 app.include_router(solicitudes.router, prefix="/api", tags=["Solicitudes"])
 app.include_router(servicios.router, prefix="/api", tags=["Servicios"])
-app.include_router(procesamiento.router, prefix="/api", tags=["Procesamiento"])
+app.include_router(procesamiento.router, prefix="/api", tags=["Procesamiento Automático"])
